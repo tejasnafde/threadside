@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Threadside
 // @namespace    https://tn07.dev/threadside
-// @version      1.1.0
+// @version      1.1.1
 // @description  Read the Hacker News discussion for the page you are on, in a sidebar. One request per thread, on-demand by default.
 // @author       tejas
 // @license      MIT
@@ -175,7 +175,10 @@
 	let sidebarHost = null;
 	let floatingHost = null;
 	let opening = false;
-	let currentHref = location.href;
+	// The canonical form, not location.href: a page that writes its state into
+	// the fragment (slowroads.io does it continuously) would otherwise look like
+	// a new page several times a second.
+	let currentKey = canonicalize(location.href);
 
 	function debug(...args) {
 		if (DEBUG) console.log("[threadside]", ...args);
@@ -1784,11 +1787,17 @@ ${story.text ? `<div class="story-text">${sanitizeHTML(story.text)}</div>` : ""}
 	 * Single-page-app navigation
 	 * ------------------------------------------------------------------ */
 
+	function navigated() {
+		const key = canonicalize(location.href);
+		if (key === currentKey) return false;
+		currentKey = key;
+		return true;
+	}
+
 	function watchNavigation() {
 		const check = () => {
-			if (location.href === currentHref) return;
-			currentHref = location.href;
-			debug("navigated", currentHref);
+			if (!navigated()) return;
+			debug("navigated", currentKey);
 
 			closeSidebar();
 			removeFloatingButton();
@@ -1797,8 +1806,9 @@ ${story.text ? `<div class="story-text">${sanitizeHTML(story.text)}</div>` : ""}
 			detect().catch((error) => debug("detect failed", error));
 		};
 
+		// No hashchange listener: a fragment cannot change the canonical URL, so
+		// it can never mean a different page.
 		window.addEventListener("popstate", () => setTimeout(check, 50));
-		window.addEventListener("hashchange", () => setTimeout(check, 50));
 		setInterval(check, 2000);
 	}
 

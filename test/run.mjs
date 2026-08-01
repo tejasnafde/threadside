@@ -19,7 +19,7 @@ src = src.replace(
 		canonicalize, sameCanonicalURL, sanitizeHTML, orderChildren, relTime,
 		plural, countTree, countDescendants, fromAlgoliaNode, normalizeStory,
 		autoDetectBlockedReason, buildComment, mapLimit,
-		openDiscussion, findStories, fetchThread, detect, closeSidebar, claimDocument,
+		openDiscussion, findStories, fetchThread, detect, closeSidebar, claimDocument, navigated,
 		getSettings: () => settings,
 		patchSettings: (p) => { settings = { ...settings, ...p }; },
 		DEFAULTS,
@@ -367,6 +367,17 @@ const second = build("https://example.com/post", "<body></body>", { routes: ROUT
 await second.findStories("https://example.com/post");
 check("first lookup hit the network", searchesBefore, 1);
 check("second lookup served from cache", second.requested.filter((u) => u.includes("/search")).length, 0);
+
+/* a fragment is not a new page (slowroads.io writes its save state into it) */
+const nav = build("https://slowroads.io/#A0-67e11bb9@3");
+check("same url is not a navigation", nav.navigated(), false);
+nav.dom.window.location.hash = "#A0-67e11bb9@9";
+check("hash change is not a navigation", nav.navigated(), false);
+nav.dom.window.location.hash = "#totally-different";
+check("another hash change is still not a navigation", nav.navigated(), false);
+nav.dom.window.history.pushState({}, "", "/other-page");
+check("a path change IS a navigation", nav.navigated(), true);
+check("and only once", nav.navigated(), false);
 
 /* one instance per document, so a duplicate install cannot draw two buttons */
 const solo = build("https://example.com/a");
