@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Threadside
 // @namespace    https://tn07.dev/threadside
-// @version      1.0.0
+// @version      1.1.0
 // @description  Read the Hacker News discussion for the page you are on, in a sidebar. One request per thread, on-demand by default.
 // @author       tejas
 // @license      MIT
@@ -91,6 +91,11 @@
 	const DEFAULTS = {
 		// false means the script never touches the network until you ask it to.
 		autoDetect: true,
+		// Open the sidebar by itself when a discussion is found. Off by default:
+		// a panel taking over a third of the window uninvited is too much, and a
+		// wrong match makes it worse. When off, a small button appears with the
+		// comment count and jiggles once, and you decide.
+		autoOpen: false,
 		// auto | light | dark
 		theme: "auto",
 		// Include content-identifying query params (?v=, ?id=) in lookups.
@@ -244,6 +249,18 @@
 
 	function isMobile() {
 		return window.matchMedia("(max-width: 700px)").matches;
+	}
+
+	// ponytail: one instance per document, claimed through the DOM rather than a
+	// window property, because a userscript sandbox does not reliably share
+	// window between two instances but always shares the document. Two installs
+	// of the same script (pasted, then installed from the raw URL) otherwise
+	// each draw their own button and neither can see the other's.
+	function claimDocument() {
+		const root = document.documentElement;
+		if (root.hasAttribute("data-threadside")) return false;
+		root.setAttribute("data-threadside", "1");
+		return true;
 	}
 
 	/* ------------------------------------------------------------------ *
@@ -848,7 +865,7 @@
 	 * Floating button (shadow-isolated, draggable, position persisted)
 	 * ------------------------------------------------------------------ */
 
-	async function createFloatingButton({ label, title, onActivate }) {
+	async function createFloatingButton({ label, title, onActivate, attention }) {
 		removeFloatingButton();
 
 		const host = document.createElement("div");
@@ -876,11 +893,27 @@ button {
 	-webkit-tap-highlight-color: transparent;
 }
 button:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+
+/* Two short jiggles once, then still. Enough to be noticed in peripheral
+   vision, short enough not to be a nuisance on every page load. */
+@keyframes jiggle {
+	0%, 100% { transform: rotate(0deg) scale(1); }
+	15% { transform: rotate(-7deg) scale(1.08); }
+	30% { transform: rotate(6deg) scale(1.08); }
+	45% { transform: rotate(-4deg) scale(1.04); }
+	60% { transform: rotate(3deg) scale(1.02); }
+}
+button.attention { animation: jiggle 0.75s ease-in-out 2; }
+
+@media (prefers-reduced-motion: reduce) {
+	button.attention { animation: none; }
+}
 </style>
 <button type="button"></button>`;
 
 		const button = shadow.querySelector("button");
 		button.textContent = label;
+		if (attention) button.classList.add("attention");
 		button.title = title || label;
 		button.setAttribute("aria-label", title || label);
 
@@ -1330,10 +1363,11 @@ header button:hover { background: rgba(0, 0, 0, 0.24); }
 
 	let lastOpenedIds = null;
 
-	function showFloatingButton(label, title, ids, handler) {
+	function showFloatingButton(label, title, ids, handler, attention) {
 		createFloatingButton({
 			label,
 			title,
+			attention,
 			onActivate:
 				handler ||
 				(() => {
@@ -1666,6 +1700,20 @@ ${story.text ? `<div class="story-text">${sanitizeHTML(story.text)}</div>` : ""}
 			},
 		);
 
+		registerMenu(
+			"Auto-open sidebar: " + (settings.autoOpen ? "ON" : "OFF") + " (toggle)",
+			async () => {
+				await saveSettings({ autoOpen: !settings.autoOpen });
+				alert(
+					"Threadside will now " +
+						(settings.autoOpen
+							? "open the sidebar by itself when it finds a discussion."
+							: "show a button instead of opening the sidebar.") +
+						"\nReload the page for the menu label to update.",
+				);
+			},
+		);
+
 		const host = location.hostname.toLowerCase();
 		const blocked = settings.blockedHosts.includes(host);
 
@@ -1779,11 +1827,19 @@ ${story.text ? `<div class="story-text">${sanitizeHTML(story.text)}</div>` : ""}
 
 		const ids = stories.map((story) => story.id);
 
-		if (isMobile()) {
+		// Always the button unless you asked for the sidebar to open itself.
+		// isMobile() no longer decides this: a narrow window was never the only
+		// reason to want a say in it.
+		if (!settings.autoOpen || isMobile()) {
+			const comments = stories.reduce((sum, s) => sum + (s.comments || 0), 0);
 			showFloatingButton(
-				"HN " + stories.reduce((sum, s) => sum + (s.comments || 0), 0),
-				"Open the Hacker News discussion",
+				comments ? "HN " + comments : "HN",
+				stories.length > 1
+					? stories.length + " Hacker News discussions for this page"
+					: "Hacker News discussion, " + plural(comments, "comment"),
 				ids,
+				null,
+				true,
 			);
 			return;
 		}
@@ -1796,6 +1852,11 @@ ${story.text ? `<div class="story-text">${sanitizeHTML(story.text)}</div>` : ""}
 	 * ------------------------------------------------------------------ */
 
 	async function main() {
+		if (!claimDocument()) {
+			debug("another instance already owns this document, standing down");
+			return;
+		}
+
 		const stored = await store.get(KEY.settings, {});
 		settings = { ...DEFAULTS, ...(stored || {}) };
 		if (!Array.isArray(settings.blockedHosts)) settings.blockedHosts = [];

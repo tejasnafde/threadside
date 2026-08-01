@@ -19,7 +19,7 @@ src = src.replace(
 		canonicalize, sameCanonicalURL, sanitizeHTML, orderChildren, relTime,
 		plural, countTree, countDescendants, fromAlgoliaNode, normalizeStory,
 		autoDetectBlockedReason, buildComment, mapLimit,
-		openDiscussion, findStories, fetchThread, detect, closeSidebar,
+		openDiscussion, findStories, fetchThread, detect, closeSidebar, claimDocument,
 		getSettings: () => settings,
 		patchSettings: (p) => { settings = { ...settings, ...p }; },
 		DEFAULTS,
@@ -367,6 +367,30 @@ const second = build("https://example.com/post", "<body></body>", { routes: ROUT
 await second.findStories("https://example.com/post");
 check("first lookup hit the network", searchesBefore, 1);
 check("second lookup served from cache", second.requested.filter((u) => u.includes("/search")).length, 0);
+
+/* one instance per document, so a duplicate install cannot draw two buttons */
+const solo = build("https://example.com/a");
+check("first instance claims the document", solo.claimDocument(), true);
+check("second instance stands down", solo.claimDocument(), false);
+
+/* auto-open off (the default) shows a button, not a sidebar */
+const quiet = build("https://example.com/post", "<body></body>", { routes: ROUTES });
+await quiet.detect();
+await new Promise((r) => setTimeout(r, 60));
+const quietHost = [...quiet.dom.window.document.body.children].find((n) => n.shadowRoot);
+truthy("something was drawn", !!quietHost);
+truthy("it is a button, not a panel", !quietHost.shadowRoot.querySelector("#panel"));
+const btn = quietHost.shadowRoot.querySelector("button");
+check("button shows the comment count", btn.textContent, "HN 4");
+truthy("button jiggles for attention", btn.classList.contains("attention"));
+
+/* autoOpen: true restores the old behaviour */
+const eager = build("https://example.com/post", "<body></body>", { routes: ROUTES });
+eager.patchSettings({ autoOpen: true });
+await eager.detect();
+await new Promise((r) => setTimeout(r, 60));
+truthy("autoOpen opens the panel",
+	!![...eager.dom.window.document.body.children].some((n) => n.shadowRoot && n.shadowRoot.querySelector("#panel")));
 
 /* a failed request must not be cached as "no discussion" */
 const flaky = {};

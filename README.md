@@ -70,14 +70,14 @@ updates** in the dashboard reinstalls it. Handy while you are changing things.
 The `@exclude *://localhost/*` line stops the script from *running* on localhost;
 it does not stop you installing from there.
 
-**Option C - from a git remote.** If you push this repo somewhere, add these two
-lines to the metadata block and open the raw URL in Firefox; the manager will
-then check for updates on its own schedule.
+**Option C - install from GitHub (one click, self-updating).** Open this in
+Firefox and confirm:
 
-```
-// @updateURL    https://raw.githubusercontent.com/<you>/threadside/main/threadside.user.js
-// @downloadURL  https://raw.githubusercontent.com/<you>/threadside/main/threadside.user.js
-```
+<https://raw.githubusercontent.com/tejasnafde/threadside/main/threadside.user.js>
+
+`@updateURL` and `@downloadURL` already point there, so the manager checks for
+new versions on its own. Do not combine this with Option A: two installs draw two
+buttons.
 
 ### 3. Two Firefox settings worth checking
 
@@ -95,9 +95,30 @@ Open a page that is definitely on Hacker News:
 
 <https://blog.rust-lang.org/2019/11/07/Async-await-stable.html>
 
-The sidebar should appear on the right with roughly 380 comments. If nothing
-happens, open the browser console (**Ctrl+Shift+K**) and set `DEBUG = true` near
-the top of the script; it then logs why it declined to do anything.
+An orange **HN 380** button should appear in the top right corner and jiggle
+twice. Click it and the sidebar opens with the thread. If no button appears, open
+the browser console (**Ctrl+Shift+K**) and set `DEBUG = true` near the top of the
+script; it then logs why it declined to do anything.
+
+### If two HN buttons appear
+
+You have the script installed twice, most likely pasted once and then installed
+from the raw URL. Open the manager's dashboard and delete one.
+
+The script now also refuses to run twice in one document: the first instance
+claims `<html data-threadside="1">` and any other instance stands down. The claim
+goes through the DOM rather than a `window` property because a userscript sandbox
+does not reliably share `window` between two instances, but the document is
+always shared.
+
+### If the button appears on a page that was never on Hacker News
+
+Click it and look. The lookup requires an exact match on the canonicalised URL,
+but sites reuse URL shapes, so a false positive is possible. This is the main
+reason the sidebar no longer opens by itself: a wrong match is now a button you
+ignore rather than a panel you have to close.
+
+If a site is a repeat offender, use **Never look up `<host>`** from the menu.
 
 ### If the console says `cache hit <url> 0`
 
@@ -123,9 +144,17 @@ fixed:
 
 ## Using it
 
+When a discussion exists, a small orange **HN** button appears in the corner with
+the comment count on it, and jiggles twice. That is all it does. Nothing opens
+until you click it.
+
+The sidebar does not open by itself, on purpose. A panel taking a third of the
+window uninvited is too much, and a wrong URL match makes it worse. If you want
+the old behaviour, turn on **Auto-open sidebar** in the userscript menu.
+
 | Action | How |
 |---|---|
-| Open the discussion for this page | Happens automatically on desktop, or the userscript menu -> **Show HN discussion for this page**, or `Alt+Shift+H` |
+| Open the discussion for this page | Click the **HN** button, or the userscript menu -> **Show HN discussion for this page**, or `Alt+Shift+H` |
 | Close the sidebar | **Close**, or `Esc`, or `Alt+Shift+H` again |
 | Get it out of the way but keep it loaded | **Hide** (collapses to a draggable orange HN button) |
 | Move the button | Drag it. The position is remembered across sites |
@@ -137,6 +166,9 @@ The userscript menu (Violentmonkey toolbar icon, or Tampermonkey icon ->
 Threadside) also holds:
 
 - **Auto-detect: ON/OFF** - the master switch for looking pages up unprompted.
+  Off means no requests at all until you ask.
+- **Auto-open sidebar: ON/OFF** - off by default. On, the sidebar opens itself
+  whenever a discussion is found, with no button step.
 - **Never look up `<host>`** - a per-site block, for sites you would rather the
   script never see.
 - **Theme: auto/light/dark** - `auto` follows `prefers-color-scheme`.
@@ -314,6 +346,7 @@ change through the menu is stored and wins over them.
 | Setting | Default | Meaning |
 |---|---|---|
 | `autoDetect` | `true` | Look pages up without being asked |
+| `autoOpen` | `false` | Open the sidebar itself instead of showing a button |
 | `theme` | `"auto"` | `auto`, `light` or `dark` |
 | `sendQueryParams` | `true` | Include allowlisted query params in lookups |
 | `minPoints` | `0` | Ignore submissions below this score |
